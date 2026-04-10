@@ -1,6 +1,7 @@
 #include "Game.h"
 #include "BFS.h"
 #include "DFS.h"
+#include "IDDFS.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -256,6 +257,10 @@ void Game::setAlgorithm(const std::string& name) {
         searchAlgorithm = std::make_unique<DFS>();
         std::cout << "Algorithm set to DFS" << std::endl;
     }
+    else if (name == "IDDFS") {  // Добавить эту секцию
+        searchAlgorithm = std::make_unique<IDDFS>();
+        std::cout << "Algorithm set to IDDFS" << std::endl;
+    }
 }
 
 void Game::solve() {
@@ -353,6 +358,10 @@ void Game::processInput() {
             // DFS поиск
             else if (event.key.code == sf::Keyboard::N) {
                 setAlgorithm("DFS");
+                solve();
+            }
+            else if (event.key.code == sf::Keyboard::M) {
+                setAlgorithm("IDDFS");
                 solve();
             }
             // Статистика
@@ -480,6 +489,7 @@ void Game::drawUI() {
     info += "  R       - Reset level\n";
     info += "  B       - BFS search\n";
     info += "  N       - DFS search\n";
+    info += "  M       - IDDFS search\n";
     info += "  Tab     - Toggle stats\n";
     info += "  F1      - Help\n";
 
