@@ -1,7 +1,10 @@
-#include "Game.h"
+п»ї#include "Game.h"
 #include "BFS.h"
 #include "DFS.h"
 #include "IDDFS.h"
+#include "AStar.h"
+#include "LevelGenerator.h"
+#include "Test.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -9,41 +12,46 @@
 
 Game::Game()
     : window(sf::VideoMode(WINDOW_WIDTH, WINDOW_HEIGHT), "Sokoban"),
-    tileSize(96),
+    tileSize(80),
     isAnimating(false),
     animationStep(0),
     showStats(false),
     playerScale(1.0f),
     boxScale(1.0f),
-    wallScale(1.0f),
-    targetScale(1.0f),
+    wallScale(0.2f),
+    targetScale(0.5f),
     floorScale(1.0f),
     playerOffset(0, 0),
     boxOffset(0, 0),
     wallOffset(0, 0),
-    targetOffset(0, 0),
+    targetOffset(10, 12),
     floorOffset(0, 0) {
 
     std::cout << "\n=== SOKOBAN ===" << std::endl;
     std::cout << "Tile size: " << tileSize << " pixels" << std::endl;
 
-    // Включаем вертикальную синхронизацию для устранения разрывов
+    // Р’РєР»СЋС‡Р°РµРј РІРµСЂС‚РёРєР°Р»СЊРЅСѓСЋ СЃРёРЅС…СЂРѕРЅРёР·Р°С†РёСЋ РґР»СЏ СѓСЃС‚СЂР°РЅРµРЅРёСЏ СЂР°Р·СЂС‹РІРѕРІ
     window.setVerticalSyncEnabled(true);
 
     loadTextures();
     updateScales();
 
     std::vector<std::string> level = {
-    "#######",
-    "#     #",
-    "#@$   #",
-    "#  .  #",
-    "#     #",
-    "#     #",
-    "#######"
+    "#########",
+    "#       #",
+    "#  @$   #",
+    "#  .    #",
+    "#       #",
+    "#       #",
+    "#       #",
+    "#       #",
+    "#########"
     };
 
     loadLevel(level);
+    LevelGenerator generator;
+    LevelData data = generator.generateRandomLevel(10);
+    loadLevelFromData(data);
     setAlgorithm("BFS");
 
     std::cout << "Ready! Use WASD/Arrows to move, B/N for search, Tab for stats, F1 for help" << std::endl;
@@ -63,21 +71,21 @@ void Game::run() {
 bool Game::loadTextures() {
     bool success = true;
 
-    // Включаем сглаживание (с отступами оно не будет создавать артефакты)
+    // Р’РєР»СЋС‡Р°РµРј СЃРіР»Р°Р¶РёРІР°РЅРёРµ (СЃ РѕС‚СЃС‚СѓРїР°РјРё РѕРЅРѕ РЅРµ Р±СѓРґРµС‚ СЃРѕР·РґР°РІР°С‚СЊ Р°СЂС‚РµС„Р°РєС‚С‹)
     playerTexture.setSmooth(true);
     boxTexture.setSmooth(true);
     wallTexture.setSmooth(true);
     targetTexture.setSmooth(true);
     floorTexture.setSmooth(true);
 
-    // Загрузка текстур с добавлением отступа в 1 пиксель
-    loadTextureWithPadding(playerTexture, "Assets/Egor/Idle/South/Слой 1.png", 1);
+    // Р—Р°РіСЂСѓР·РєР° С‚РµРєСЃС‚СѓСЂ СЃ РґРѕР±Р°РІР»РµРЅРёРµРј РѕС‚СЃС‚СѓРїР° РІ 1 РїРёРєСЃРµР»СЊ
+    loadTextureWithPadding(playerTexture, "Assets/Egor/Idle/South/РЎР»РѕР№ 1.png", 1);
     loadTextureWithPadding(boxTexture, "Assets/Stone/Stone.png", 1);
-    loadTextureWithPadding(wallTexture, "Assets/Flora/Stump.png", 1);
-    loadTextureWithPadding(targetTexture, "Assets/Flora/Pine.png", 1);
+    loadTextureWithPadding(wallTexture, "Assets/Flora/Pine.png", 1);
+    loadTextureWithPadding(targetTexture, "Assets/Level/Cross.png", 1);
     loadTextureWithPadding(floorTexture, "Assets/Level/BG.png", 1);
 
-    // Проверка загрузки
+    // РџСЂРѕРІРµСЂРєР° Р·Р°РіСЂСѓР·РєРё
     if (playerTexture.getSize().x == 0) {
         std::cout << "Warning: Player texture failed to load" << std::endl;
         playerTexture.create(tileSize, tileSize);
@@ -108,38 +116,42 @@ bool Game::loadTextures() {
 }
 
 void Game::updateScales() {
-    auto calculateScaleAndOffset = [this](sf::Texture& texture, float& scale, sf::Vector2f& offset) {
-        if (texture.getSize().x == 0 || texture.getSize().y == 0) {
-            scale = 1.0f;
-            offset = sf::Vector2f(0, 0);
-            return;
+    auto calculateScaleAndOffset = [this](sf::Texture& texture, float& scale, sf::Vector2f& offset, bool useAuto) {
+        if (useAuto) {
+            // РђРІС‚РѕРјР°С‚РёС‡РµСЃРєРёР№ СЂР°СЃС‡С‘С‚ (РєР°Рє Р±С‹Р»Рѕ)
+            if (texture.getSize().x == 0 || texture.getSize().y == 0) {
+                scale = 1.0f;
+                offset = sf::Vector2f(0, 0);
+                return;
+            }
+
+            float scaleX = static_cast<float>(tileSize) / texture.getSize().x;
+            float scaleY = static_cast<float>(tileSize) / texture.getSize().y;
+            float baseScale = std::min(scaleX, scaleY);
+            scale = baseScale * globalScale;
+
+            float scaledWidth = texture.getSize().x * scale;
+            float scaledHeight = texture.getSize().y * scale;
+
+            offset = sf::Vector2f(
+                std::round((tileSize - scaledWidth) / 2.0f),
+                std::round((tileSize - scaledHeight) / 2.0f)
+            );
+
+            int targetWidth = static_cast<int>(std::round(texture.getSize().x * scale));
+            if (targetWidth > 0) {
+                scale = static_cast<float>(targetWidth) / texture.getSize().x;
+            }
         }
-
-        // Для текстур с отступами масштабируем так же
-        float scaleX = static_cast<float>(tileSize) / texture.getSize().x;
-        float scaleY = static_cast<float>(tileSize) / texture.getSize().y;
-        scale = std::min(scaleX, scaleY);
-
-        float scaledWidth = texture.getSize().x * scale;
-        float scaledHeight = texture.getSize().y * scale;
-
-        offset = sf::Vector2f(
-            std::round((tileSize - scaledWidth) / 2.0f),
-            std::round((tileSize - scaledHeight) / 2.0f)
-        );
-
-        // Корректируем масштаб для целых пикселей
-        int targetWidth = static_cast<int>(std::round(texture.getSize().x * scale));
-        if (targetWidth > 0) {
-            scale = static_cast<float>(targetWidth) / texture.getSize().x;
-        }
+        // else: РѕСЃС‚Р°РІР»СЏРµРј scale Рё offset РєР°Рє РµСЃС‚СЊ (СЂСѓС‡РЅС‹Рµ Р·РЅР°С‡РµРЅРёСЏ)
         };
 
-    calculateScaleAndOffset(playerTexture, playerScale, playerOffset);
-    calculateScaleAndOffset(boxTexture, boxScale, boxOffset);
-    calculateScaleAndOffset(wallTexture, wallScale, wallOffset);
-    calculateScaleAndOffset(targetTexture, targetScale, targetOffset);
-    calculateScaleAndOffset(floorTexture, floorScale, floorOffset);
+    // Р”Р»СЏ РєР°Р¶РґРѕРіРѕ С‚РёРїР° РѕР±СЉРµРєС‚Р° СЂРµС€Р°РµРј, РёСЃРїРѕР»СЊР·РѕРІР°С‚СЊ Р°РІС‚Рѕ РёР»Рё СЂСѓС‡РЅРѕР№ СЂРµР¶РёРј
+    calculateScaleAndOffset(playerTexture, playerScale, playerOffset, true);  // РёРіСЂРѕРє Р°РІС‚Рѕ
+    calculateScaleAndOffset(boxTexture, boxScale, boxOffset, true);          // СЏС‰РёРє Р°РІС‚Рѕ
+    calculateScaleAndOffset(wallTexture, wallScale, wallOffset, false);      // СЃС‚РµРЅР° - СЂСѓС‡РЅРѕР№
+    calculateScaleAndOffset(targetTexture, targetScale, targetOffset, false); // С†РµР»СЊ - СЂСѓС‡РЅРѕР№
+    calculateScaleAndOffset(floorTexture, floorScale, floorOffset, true);     // РїРѕР» Р°РІС‚Рѕ
 
     std::cout << "\n=== Texture Scales (with padding) ===" << std::endl;
     std::cout << "Player: size=" << playerTexture.getSize().x << "x" << playerTexture.getSize().y
@@ -155,7 +167,7 @@ void Game::updateScales() {
 }
 
 sf::Vector2f Game::getDrawPosition(const sf::Vector2i& gridPos, const sf::Vector2f& offset) {
-    // Округляем позицию до целых пикселей для устранения артефактов
+    // РћРєСЂСѓРіР»СЏРµРј РїРѕР·РёС†РёСЋ РґРѕ С†РµР»С‹С… РїРёРєСЃРµР»РµР№ РґР»СЏ СѓСЃС‚СЂР°РЅРµРЅРёСЏ Р°СЂС‚РµС„Р°РєС‚РѕРІ
     return sf::Vector2f(
         std::round(static_cast<float>(gridPos.x * tileSize) + offset.x),
         std::round(static_cast<float>(gridPos.y * tileSize) + offset.y)
@@ -165,12 +177,12 @@ sf::Vector2f Game::getDrawPosition(const sf::Vector2i& gridPos, const sf::Vector
 sf::Image Game::cropAndAddPadding(const sf::Image& image, int padding) {
     sf::Vector2u size = image.getSize();
 
-    // Находим непрозрачные границы
+    // РќР°С…РѕРґРёРј РЅРµРїСЂРѕР·СЂР°С‡РЅС‹Рµ РіСЂР°РЅРёС†С‹
     int left = size.x, right = 0, top = size.y, bottom = 0;
 
     for (unsigned int y = 0; y < size.y; y++) {
         for (unsigned int x = 0; x < size.x; x++) {
-            if (image.getPixel(x, y).a > 0) {  // Не полностью прозрачный
+            if (image.getPixel(x, y).a > 0) {  // РќРµ РїРѕР»РЅРѕСЃС‚СЊСЋ РїСЂРѕР·СЂР°С‡РЅС‹Р№
                 left = std::min(left, (int)x);
                 right = std::max(right, (int)x);
                 top = std::min(top, (int)y);
@@ -179,23 +191,23 @@ sf::Image Game::cropAndAddPadding(const sf::Image& image, int padding) {
         }
     }
 
-    // Если нет непрозрачных пикселей, возвращаем оригинал
+    // Р•СЃР»Рё РЅРµС‚ РЅРµРїСЂРѕР·СЂР°С‡РЅС‹С… РїРёРєСЃРµР»РµР№, РІРѕР·РІСЂР°С‰Р°РµРј РѕСЂРёРіРёРЅР°Р»
     if (left > right || top > bottom) {
         return image;
     }
 
-    // Вычисляем размеры обрезанного изображения
+    // Р’С‹С‡РёСЃР»СЏРµРј СЂР°Р·РјРµСЂС‹ РѕР±СЂРµР·Р°РЅРЅРѕРіРѕ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ
     int croppedWidth = right - left + 1;
     int croppedHeight = bottom - top + 1;
 
-    // Создаём изображение с отступами
+    // РЎРѕР·РґР°С‘Рј РёР·РѕР±СЂР°Р¶РµРЅРёРµ СЃ РѕС‚СЃС‚СѓРїР°РјРё
     int newWidth = croppedWidth + padding * 2;
     int newHeight = croppedHeight + padding * 2;
 
     sf::Image paddedImage;
     paddedImage.create(newWidth, newHeight, sf::Color::Transparent);
 
-    // Копируем непрозрачную часть в центр с отступами
+    // РљРѕРїРёСЂСѓРµРј РЅРµРїСЂРѕР·СЂР°С‡РЅСѓСЋ С‡Р°СЃС‚СЊ РІ С†РµРЅС‚СЂ СЃ РѕС‚СЃС‚СѓРїР°РјРё
     for (int y = 0; y < croppedHeight; y++) {
         for (int x = 0; x < croppedWidth; x++) {
             sf::Color pixel = image.getPixel(left + x, top + y);
@@ -220,6 +232,52 @@ void Game::loadTextureWithPadding(sf::Texture& texture, const std::string& path,
         std::cout << "Failed to load texture: " << path << std::endl;
         texture.create(tileSize, tileSize);
     }
+}
+
+void Game::generateAndLoadRandomLevel() {
+    LevelGenerator generator;
+    LevelData data = generator.generateRandomLevel();
+    loadLevelFromData(data);
+}
+
+void Game::loadLevelFromData(const LevelData& data) {
+    walls = data.walls;
+    targets = data.targets;
+
+    initialState = State(data.playerStart, data.boxes);
+    currentState = initialState;
+    solutionPath.clear();
+    isAnimating = false;
+    animationStep = 0;
+
+    std::cout << "\n=== Random Level Generated ===" << std::endl;
+    std::cout << "Size: " << data.width << "x" << data.height << std::endl;
+    std::cout << "Walls: " << walls.size() << std::endl;
+    std::cout << "Targets: " << targets.size() << std::endl;
+    std::cout << "Boxes: " << currentState.getBoxes().size() << std::endl;
+    std::cout << "Player at: (" << currentState.getPlayerPos().x << "," << currentState.getPlayerPos().y << ")" << std::endl;
+
+    // Р’С‹РІРѕРґРёРј РєР°СЂС‚Сѓ РІ РєРѕРЅСЃРѕР»СЊ РґР»СЏ РЅР°РіР»СЏРґРЅРѕСЃС‚Рё
+    std::vector<std::string> map(data.height, std::string(data.width, ' '));
+    for (const auto& wall : walls) {
+        if (wall.x >= 0 && wall.x < data.width && wall.y >= 0 && wall.y < data.height) {
+            map[wall.y][wall.x] = '#';
+        }
+    }
+    for (const auto& target : targets) {
+        map[target.y][target.x] = '.';
+    }
+    for (const auto& box : currentState.getBoxes()) {
+        map[box.y][box.x] = '$';
+    }
+    map[currentState.getPlayerPos().y][currentState.getPlayerPos().x] = '@';
+
+    std::cout << "\nMap:" << std::endl;
+    for (const auto& line : map) {
+        std::cout << line << std::endl;
+    }
+
+    update();
 }
 
 void Game::loadLevel(const std::vector<std::string>& levelLines) {
@@ -257,9 +315,21 @@ void Game::setAlgorithm(const std::string& name) {
         searchAlgorithm = std::make_unique<DFS>();
         std::cout << "Algorithm set to DFS" << std::endl;
     }
-    else if (name == "IDDFS") {  // Добавить эту секцию
+    else if (name == "IDDFS") {
         searchAlgorithm = std::make_unique<IDDFS>();
         std::cout << "Algorithm set to IDDFS" << std::endl;
+    }
+    else if (name == "ASTAR_H1") {
+        auto astar = std::make_unique<AStar>();
+        astar->setHeuristicH1();
+        searchAlgorithm = std::move(astar);
+        std::cout << "Algorithm set to A* with heuristic H1" << std::endl;
+    }
+    else if (name == "ASTAR_H2") {
+        auto astar = std::make_unique<AStar>();
+        astar->setHeuristicH2();
+        searchAlgorithm = std::move(astar);
+        std::cout << "Algorithm set to A* with heuristic H2" << std::endl;
     }
 }
 
@@ -333,7 +403,7 @@ void Game::processInput() {
             window.close();
         }
         else if (event.type == sf::Event::KeyPressed) {
-            // Движение
+            // Р”РІРёР¶РµРЅРёРµ
             if (event.key.code == sf::Keyboard::Up || event.key.code == sf::Keyboard::W) {
                 handleMovement({ 0, -1 });
             }
@@ -346,30 +416,50 @@ void Game::processInput() {
             else if (event.key.code == sf::Keyboard::Right || event.key.code == sf::Keyboard::D) {
                 handleMovement({ 1, 0 });
             }
-            // Сброс
+            // РЎР±СЂРѕСЃ
             else if (event.key.code == sf::Keyboard::R) {
                 resetGame();
             }
-            // BFS поиск
+            // BFS РїРѕРёСЃРє
             else if (event.key.code == sf::Keyboard::B) {
                 setAlgorithm("BFS");
                 solve();
             }
-            // DFS поиск
+            // DFS РїРѕРёСЃРє
             else if (event.key.code == sf::Keyboard::N) {
                 setAlgorithm("DFS");
                 solve();
             }
+            // IDDFS РїРѕРёСЃРє
             else if (event.key.code == sf::Keyboard::M) {
                 setAlgorithm("IDDFS");
                 solve();
             }
-            // Статистика
+            // A* СЃ СЌРІСЂРёСЃС‚РёРєРѕР№ H1
+            else if (event.key.code == sf::Keyboard::Num1) {
+                setAlgorithm("ASTAR_H1");
+                solve();
+            }
+            // A* СЃ СЌРІСЂРёСЃС‚РёРєРѕР№ H2
+            else if (event.key.code == sf::Keyboard::Num2) {
+                setAlgorithm("ASTAR_H2");
+                solve();
+            }
+            // Р“РµРЅРµСЂР°С†РёСЏ РєР°СЂС‚С‹
+            else if (event.key.code == sf::Keyboard::G) {
+                generateAndLoadRandomLevel();
+            }
+            else if (event.key.code == sf::Keyboard::T) {
+                Test tester(*this);
+                tester.runAllTests();      // РІСЃРµ С‚РµСЃС‚С‹
+                // tester.runUnsolvableTest();  // С‚РµСЃС‚ РЅР° РЅРµСЂРµС€Р°РµРјСѓСЋ Р·Р°РґР°С‡Сѓ
+            }
+            // РЎС‚Р°С‚РёСЃС‚РёРєР°
             else if (event.key.code == sf::Keyboard::Tab) {
                 showStats = !showStats;
                 std::cout << "Stats: " << (showStats ? "ON" : "OFF") << std::endl;
             }
-            // Помощь
+            // РџРѕРјРѕС‰СЊ
             else if (event.key.code == sf::Keyboard::F1) {
                 std::cout << "\n=== CONTROLS ===" << std::endl;
                 std::cout << "W/Up    - Move up" << std::endl;
@@ -379,6 +469,10 @@ void Game::processInput() {
                 std::cout << "R       - Reset level" << std::endl;
                 std::cout << "B       - BFS search" << std::endl;
                 std::cout << "N       - DFS search" << std::endl;
+                std::cout << "M       - IDDFS search" << std::endl;
+                std::cout << "1       - A* with H1 (min distance)" << std::endl;
+                std::cout << "2       - A* with H2 (greedy assignment)" << std::endl;
+                std::cout << "G       - Generate random level" << std::endl;
                 std::cout << "Tab     - Toggle statistics" << std::endl;
                 std::cout << "F1      - Show this help" << std::endl;
                 std::cout << "=================" << std::endl;
@@ -398,7 +492,7 @@ void Game::render() {
 
     sf::Sprite sprite;
 
-    // Пол (заполняет всю клетку) - рисуем первым слоем
+    // РџРѕР» (Р·Р°РїРѕР»РЅСЏРµС‚ РІСЃСЋ РєР»РµС‚РєСѓ) - СЂРёСЃСѓРµРј РїРµСЂРІС‹Рј СЃР»РѕРµРј
     sprite.setTexture(floorTexture);
     sprite.setScale(floorScale, floorScale);
     for (int y = 0; y < levelData.height; y++) {
@@ -408,7 +502,7 @@ void Game::render() {
         }
     }
 
-    // Стены
+    // РЎС‚РµРЅС‹
     sprite.setTexture(wallTexture);
     sprite.setScale(wallScale, wallScale);
     for (const auto& wall : walls) {
@@ -416,7 +510,7 @@ void Game::render() {
         window.draw(sprite);
     }
 
-    // Метки (цели)
+    // РњРµС‚РєРё (С†РµР»Рё)
     sprite.setTexture(targetTexture);
     sprite.setScale(targetScale, targetScale);
     for (const auto& target : targets) {
@@ -424,7 +518,7 @@ void Game::render() {
         window.draw(sprite);
     }
 
-    // Ящики
+    // РЇС‰РёРєРё
     sprite.setTexture(boxTexture);
     sprite.setScale(boxScale, boxScale);
     for (const auto& box : currentState.getBoxes()) {
@@ -432,7 +526,7 @@ void Game::render() {
         window.draw(sprite);
     }
 
-    // Игрок (рисуем последним, чтобы был поверх всех)
+    // РРіСЂРѕРє (СЂРёСЃСѓРµРј РїРѕСЃР»РµРґРЅРёРј, С‡С‚РѕР±С‹ Р±С‹Р» РїРѕРІРµСЂС… РІСЃРµС…)
     sprite.setTexture(playerTexture);
     sprite.setScale(playerScale, playerScale);
     sf::Vector2i playerPos = currentState.getPlayerPos();
@@ -461,7 +555,7 @@ void Game::drawUI() {
             std::cout << "Font loaded: arial.ttf" << std::endl;
         }
         else {
-            if (font.loadFromFile("D:/СИИ/Лабы 1-3/AILab1-3/AILab1-3/Shafarik/Shafarik-Regular.otf")) {
+            if (font.loadFromFile("D:/РЎРР/Р›Р°Р±С‹ 1-3/AILab1-3/AILab1-3/Shafarik/Shafarik-Regular.otf")) {
                 fontLoaded = true;
                 std::cout << "Font loaded from full path!" << std::endl;
             }
@@ -478,7 +572,7 @@ void Game::drawUI() {
     text.setFillColor(sf::Color::White);
     text.setOutlineColor(sf::Color::Black);
     text.setOutlineThickness(1.0f);
-    text.setPosition(10, 10);
+    text.setPosition(750, 10);
 
     std::string info = "SOKOBAN\n";
     info += "Controls:\n";
@@ -490,6 +584,9 @@ void Game::drawUI() {
     info += "  B       - BFS search\n";
     info += "  N       - DFS search\n";
     info += "  M       - IDDFS search\n";
+    info += "  1       - A* with H1\n";
+    info += "  2       - A* with H2\n";
+    info += "  G       - Generate random level\n";
     info += "  Tab     - Toggle stats\n";
     info += "  F1      - Help\n";
 
@@ -513,11 +610,18 @@ void Game::drawUI() {
         }
         info += "On targets: " + std::to_string(boxesOnTargets) + "/" + std::to_string(targets.size()) + "\n";
 
+        // РџРѕРєР°Р·С‹РІР°РµРј С‚РµРєСѓС‰РёР№ Р°Р»РіРѕСЂРёС‚Рј
         if (dynamic_cast<BFS*>(searchAlgorithm.get())) {
             info += "Algorithm: BFS\n";
         }
         else if (dynamic_cast<DFS*>(searchAlgorithm.get())) {
             info += "Algorithm: DFS\n";
+        }
+        else if (dynamic_cast<IDDFS*>(searchAlgorithm.get())) {
+            info += "Algorithm: IDDFS\n";
+        }
+        else if (auto* astar = dynamic_cast<AStar*>(searchAlgorithm.get())) {
+            info += "Algorithm: A*\n";
         }
     }
 

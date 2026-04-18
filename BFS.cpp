@@ -1,13 +1,14 @@
 #include "BFS.h"
 #include <queue>
 #include <unordered_set>
-#include <unordered_map>
 
 SearchAlgorithm::Result BFS::search(const State& start,
     const std::vector<sf::Vector2i>& walls,
     const std::vector<sf::Vector2i>& targets) {
 
-    SearchAlgorithm::Result result;
+    Result result;
+    startTimer();
+
     std::queue<State> frontier;
     std::unordered_set<State, StateHash> closedSet;
     std::unordered_map<State, State, StateHash> parent;
@@ -16,6 +17,12 @@ SearchAlgorithm::Result BFS::search(const State& start,
     parent[start] = start;
 
     while (!frontier.empty()) {
+        // Проверка прерывания
+        if (shouldStop(result.iterations)) {
+            result.timeout = true;
+            return result;
+        }
+
         updateStatistics(result, frontier.size(), closedSet.size());
 
         State current = frontier.front();
@@ -25,6 +32,7 @@ SearchAlgorithm::Result BFS::search(const State& start,
             result.success = true;
             result.path = reconstructPath(parent, current);
             result.finalOpenListSize = static_cast<int>(frontier.size());
+            result.solutionLength = static_cast<int>(result.path.size() - 1);
             return result;
         }
 
@@ -36,6 +44,7 @@ SearchAlgorithm::Result BFS::search(const State& start,
 
         for (const auto& next : current.getSuccessors(walls, targets)) {
             if (closedSet.find(next) == closedSet.end()) {
+                // Проверяем, нет ли уже в очереди
                 bool inFrontier = false;
                 std::queue<State> temp = frontier;
                 while (!temp.empty()) {

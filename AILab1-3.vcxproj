@@ -127,25 +127,33 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AStar.cpp" />
     <ClCompile Include="BFS.cpp" />
     <ClCompile Include="DFS.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="IDDFS.cpp" />
+    <ClCompile Include="LevelGenerator.cpp" />
     <ClCompile Include="LevelParser.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SearchAlgorithm.cpp" />
     <ClCompile Include="State.cpp" />
+    <ClCompile Include="Test.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AStar.h" />
     <ClInclude Include="BFS.h" />
     <ClInclude Include="DFS.h" />
     <ClInclude Include="Game.h" />
     <ClInclude Include="IDDFS.h" />
+    <ClInclude Include="LevelGenerator.h" />
     <ClInclude Include="LevelParser.h" />
-    <ClInclude Include="Renderer.h" />
+    <ClInclude Include="resource.h" />
     <ClInclude Include="SearchAlgorithm.h" />
     <ClInclude Include="State.h" />
+    <ClInclude Include="Test.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="AILab1-3.rc" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

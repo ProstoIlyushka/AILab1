@@ -8,9 +8,13 @@
 #include "LevelParser.h"
 
 class Game {
+    friend class Test;  // Разрешить Test доступ к приватным членам
+
 private:
     sf::RenderWindow window;
     int tileSize;
+    float globalScale = 1.0f;
+    bool useAutoScale = true;
 
     State currentState;
     State initialState;
@@ -52,16 +56,26 @@ public:
     Game();
     void run();
 
+    // Загрузка уровня
+    void loadLevelFromData(const LevelData& data);
+    void setAlgorithm(const std::string& name);
+
+    // Геттеры для Test класса
+    const std::vector<sf::Vector2i>& getWalls() const { return walls; }
+    const std::vector<sf::Vector2i>& getTargets() const { return targets; }
+    const State& getCurrentState() const { return currentState; }
+    std::unique_ptr<SearchAlgorithm>& getSearchAlgorithm() { return searchAlgorithm; }
+
 private:
     void processInput();
     void update();
     void render();
+    void generateAndLoadRandomLevel();
     void loadLevel(const std::vector<std::string>& levelLines);
     void resetGame();
     void solve();
     void animateSolution();
     void handleMovement(const sf::Vector2i& direction);
-    void setAlgorithm(const std::string& name);
     void drawUI();
     std::string getStatsText(const SearchAlgorithm::Result& result);
     bool loadTextures();
